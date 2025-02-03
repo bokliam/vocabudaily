@@ -1,9 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, Linking, ActivityIndicator, ScrollView, useColorScheme } from "react-native";
 import Constants from "expo-constants";
+import * as Notifications from "expo-notifications";
+import { requestNotificationPermissions, scheduleDailyNotification } from "../../notifications";
+import { TouchableOpacity, Share } from "react-native";
+import { Feather } from "@expo/vector-icons"; // For the share button icon
+import { Ionicons } from "@expo/vector-icons";
+
 
 const WORDNIK_API_KEY = Constants.expoConfig.extra.WORDNIK_API_KEY;
 const WORDNIK_BASE_URL = "https://api.wordnik.com/v4/words.json/wordOfTheDay";
+const APP_DOWNLOAD_LINK = "https://your-appstore-link.com"; // Replace with actual App Store/Google Play link
+
 
 const HomeScreen = () => {
   const [wordData, setWordData] = useState(null);
@@ -32,7 +40,27 @@ const HomeScreen = () => {
       .finally(() => {
         setLoading(false);
       });
+
+    // Schedule Daily Notification at 9 AM
+    (async () => {
+      await requestNotificationPermissions();
+      await scheduleDailyNotification();
+    })();   
   }, []);
+
+  const shareWord = async () => {
+    if (!wordData) return;
+  
+    try {
+      const message = `📖 Today's Word: *${wordData.word}*\n\n"${wordData.definitions?.[0]?.text || "Definition not available."}"\n\nLearn more & download the app: ${APP_DOWNLOAD_LINK}`;
+  
+      await Share.share({
+        message,
+      });
+    } catch (error) {
+      console.error("Error sharing word:", error);
+    }
+  }; 
 
   if (loading) return <ActivityIndicator size="large" color={isDarkMode ? "#fff" : "#000"} />;
   if (error) return <View style={[styles.container, isDarkMode && styles.darkContainer]}><Text style={[styles.error, isDarkMode && styles.darkText]}>Error: {error}</Text></View>;
@@ -42,7 +70,9 @@ const HomeScreen = () => {
       {wordData ? (
         <>
           {/* Display Word */}
-          <Text style={[styles.word, isDarkMode && styles.darkText]}>{wordData.word || "No word available"}</Text>
+          <View style={styles.wordContainer}>
+            <Text style={[styles.word, isDarkMode && styles.darkText]}>{wordData.word || "No word available"}</Text>
+          </View>
 
           {/* Display First Definition + Required Source Attribution */}
           <Text style={[styles.definition, isDarkMode && styles.darkText]}>
@@ -89,6 +119,15 @@ const HomeScreen = () => {
           >
             See more on Wordnik
           </Text>
+
+          <View style={styles.shareContainer}>
+            <Text
+              style={[styles.shareTitle, isDarkMode && styles.darkText]}
+              onPress={shareWord}
+            >
+              Love this word? <Text style={styles.shareClickableText}>Share it with friends!</Text> 📤
+            </Text>
+          </View>
         </>
       ) : (
         <Text style={[styles.error, isDarkMode && styles.darkText]}>No word data available.</Text>
@@ -114,6 +153,30 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     color: "#000", // Default color for light mode
   },
+  wordContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  shareContainer: {
+    marginTop: 20,
+    alignItems: "center",
+    padding: 10,
+    borderRadius: 5,
+  },
+  shareTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 5,
+    textAlign: "center",
+  },
+  shareClickableText: {
+    color: "#1E90FF", // Blue to indicate it's clickable
+    fontWeight: "bold",
+    textDecorationLine: "underline", // Underline for clarity
+  },  
+
   definition: {
     fontSize: 18,
     textAlign: "center",
