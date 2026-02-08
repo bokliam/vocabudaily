@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(eas build:*)",
+      "Bash(gh api:*)",
+      "Bash(pod install)",
+      "Bash(node:*)",
+      "Bash(npm install:*)",
+      "Bash(npx expo prebuild:*)",
+      "Bash(grep:*)",
+      "Bash(npx expo:*)",
+      "Bash(xcrun simctl:*)",
+      "Bash(git stash pop)"
+    ]
+  }
+}

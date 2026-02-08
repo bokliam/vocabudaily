@@ -1,69 +1,101 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, Linking, ActivityIndicator, ScrollView, useColorScheme } from "react-native";
+import React, { useRef, useState, useEffect } from "react";
+import { View, Text, StyleSheet, Linking, ActivityIndicator, ScrollView, useColorScheme, Animated, TouchableOpacity, Share, FlatList, Dimensions } from "react-native";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
 import { requestNotificationPermissions, scheduleDailyNotification } from "../../notifications";
-import { TouchableOpacity, Share } from "react-native";
-import { Feather } from "@expo/vector-icons"; // For the share button icon
-import { Ionicons } from "@expo/vector-icons";
+import {} from "react-native";
+import { createContext, useContext } from "react";
 
 
 const WORDNIK_API_KEY = Constants.expoConfig.extra.WORDNIK_API_KEY;
 const WORDNIK_BASE_URL = "https://api.wordnik.com/v4/words.json/wordOfTheDay";
-const APP_DOWNLOAD_LINK = "https://your-appstore-link.com"; // Replace with actual App Store/Google Play link
+const APP_DOWNLOAD_LINK = "https://apps.apple.com/app/id6758642231";
+const SCREEN_WIDTH = Dimensions.get("window").width;
+const CARD_WIDTH = SCREEN_WIDTH * 0.90; // 85% of screen width
+const WordContext = createContext();
 
-
-const HomeScreen = () => {
+export const WordProvider = ({ children }) => {
   const [wordData, setWordData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const fetchWord = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${WORDNIK_BASE_URL}?api_key=${WORDNIK_API_KEY}`);
+      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+      const data = await response.json();
+      setWordData(data);
+    } catch (error) {
+      console.error("Error fetching word:", error);
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!wordData) {
+      fetchWord();
+    }
+  }, []);
+
+  return (
+    <WordContext.Provider value={{ wordData, loading, error, fetchWord }}>
+      {children}
+    </WordContext.Provider>
+  );
+};
+
+
+const HomeScreen = () => {
+  const [activeIndex, setActiveIndex] = useState(0); // Track active example index
+  const { wordData, loading, error, fetchWord } = useContext(WordContext);
   
   // Detect system theme (light/dark)
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === "dark";
 
   useEffect(() => {
-    fetch(`${WORDNIK_BASE_URL}?api_key=${WORDNIK_API_KEY}`)
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-        return response.json();
-      })
-      .then((data) => {
-        setWordData(data);
-      })
-      .catch((error) => {
-        console.error("Error fetching word:", error);
-        setError(error.message);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    const controller = new AbortController();
+
+    fetchWord();
 
     // Schedule Daily Notification at 9 AM
     (async () => {
       await requestNotificationPermissions();
       await scheduleDailyNotification();
-    })();   
+    })(); 
+
+    return () => controller.abort(); 
   }, []);
 
   const shareWord = async () => {
     if (!wordData) return;
   
     try {
-      const message = `📖 Today's Word: *${wordData.word}*\n\n"${wordData.definitions?.[0]?.text || "Definition not available."}"\n\nLearn more & download the app: ${APP_DOWNLOAD_LINK}`;
+      const message = `📖 Today's Word: "${wordData.word}"\n\nExpand your vocabulary with Vocabudaily! Get the app here: ${APP_DOWNLOAD_LINK}`;
   
       await Share.share({
         message,
       });
     } catch (error) {
-      console.error("Error sharing word:", error);
+      console.error("We’re having trouble sharing today’s word. Please try again later.", error);
     }
   }; 
 
   if (loading) return <ActivityIndicator size="large" color={isDarkMode ? "#fff" : "#000"} />;
-  if (error) return <View style={[styles.container, isDarkMode && styles.darkContainer]}><Text style={[styles.error, isDarkMode && styles.darkText]}>Error: {error}</Text></View>;
+  if (error) return (
+    <View style={[styles.container, isDarkMode && styles.darkContainer]}>
+      <Text style={[styles.error, isDarkMode && styles.darkText]}>
+        Error: {error}
+      </Text>
+      <TouchableOpacity style={styles.retryButton} onPress={fetchWord}>
+        <Text style={styles.retryButtonText}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
     <ScrollView contentContainerStyle={[styles.container, isDarkMode && styles.darkContainer]}>
@@ -76,6 +108,7 @@ const HomeScreen = () => {
 
           {/* Display First Definition + Required Source Attribution */}
           <Text style={[styles.definition, isDarkMode && styles.darkText]}>
+          <Text style={[styles.definitionTitle, isDarkMode && styles.darkText]}>Definition: </Text>
             {wordData.definitions?.[0]?.text || "Definition not available."}
           </Text>
           {wordData.definitions?.[0]?.source && (
@@ -111,6 +144,8 @@ const HomeScreen = () => {
               )}
             </View>
           )}
+
+
 
           {/* Required Wordnik Attribution - Direct Link */}
           <Text
@@ -148,10 +183,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#121212", // Dark background for dark mode
   },
   word: {
-    fontSize: 32,
+    fontSize: 40, // Bigger for emphasis
     fontWeight: "bold",
-    marginBottom: 10,
-    color: "#000", // Default color for light mode
+    marginBottom: 8,
   },
   wordContainer: {
     flexDirection: "row",
@@ -175,14 +209,19 @@ const styles = StyleSheet.create({
     color: "#1E90FF", // Blue to indicate it's clickable
     fontWeight: "bold",
     textDecorationLine: "underline", // Underline for clarity
-  },  
-
+  },
+  definitionTitle: {
+    fontSize: 18,
+    textAlign: "center",
+    fontStyle: "italic",
+    fontWeight: "bold",
+    color: "#555", // Softer color for readability
+  },
   definition: {
     fontSize: 18,
     textAlign: "center",
-    marginBottom: 10,
     fontStyle: "italic",
-    color: "#000",
+    color: "#555", // Softer color for readability
   },
   sourceAttribution: {
     fontSize: 14,
@@ -197,13 +236,21 @@ const styles = StyleSheet.create({
     color: "#555",
   },
   exampleContainer: {
-    marginTop: 15,
-    padding: 10,
+    width: CARD_WIDTH, // Ensures proper centering
+    minHeight: 160,
+    padding: 15,
     backgroundColor: "#f0f0f0",
-    borderRadius: 5,
+    borderRadius: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+    justifyContent: "center",
+    marginHorizontal: 10, // Adds spacing between cards
   },
   darkExampleContainer: {
-    backgroundColor: "#333", // Dark mode example container
+    backgroundColor: "#333",
   },
   exampleTitle: {
     fontWeight: "bold",
@@ -211,7 +258,8 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   exampleText: {
-    fontSize: 14,
+    fontSize: 16,
+    textAlign: "center",
   },
   exampleSource: {
     fontSize: 12,
@@ -240,6 +288,18 @@ const styles = StyleSheet.create({
   },
   darkText: {
     color: "#ffffff", // White text for dark mode
+  },
+  retryButton: {
+    marginTop: 15,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: "#1E90FF",
+    borderRadius: 5,
+  },
+  retryButtonText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "bold",
   },
 });
 

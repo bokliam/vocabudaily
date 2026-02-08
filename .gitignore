@@ -17,6 +17,10 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
+# Expo prebuild - these are generated automatically
+ios/
+android/
+
 # Metro
 .metro-health-check*
 
