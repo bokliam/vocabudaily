@@ -75,7 +75,7 @@ const HomeScreen = () => {
     if (!wordData) return;
   
     try {
-      const message = `📖 Today's Word: "${wordData.word}"\n\nExpand your vocabulary with Vocabudaily! Get the app here: ${APP_DOWNLOAD_LINK}`;
+      const message = `📖 Today's Word: "${wordData.word}"\n\nExpand your vocabulary with VocabuDaily! Get the app here: ${APP_DOWNLOAD_LINK}`;
   
       await Share.share({
         message,
@@ -303,4 +303,10 @@ const styles = StyleSheet.create({
   },
 });
 
-export default HomeScreen;
+export default function HomeScreenWithProvider() {
+  return (
+    <WordProvider>
+      <HomeScreen />
+    </WordProvider>
+  );
+}

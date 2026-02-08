@@ -19,10 +19,11 @@ export default {
         WORDNIK_API_KEY: process.env.WORDNIK_API_KEY,
       },
       experiments: {
-        newArchEnabled: true,
+        newArchEnabled: false,
       },
       ios: {
         bundleIdentifier: "com.liam.vocabudaily",
+        buildNumber: "5",
         supportsTablet: true,
         config: {
           usesNonExemptEncryption: false
