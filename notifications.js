@@ -27,14 +27,6 @@ export async function cancelScheduledNotifications() {
 export async function scheduleDailyNotification() {
   await cancelScheduledNotifications(); // Ensure no duplicate notifications
 
-  const localTime = new Date();
-  localTime.setHours(9, 0, 0, 0); // Set time to 9 AM
-
-  // Adjust for past time today (schedule for next day if needed)
-  if (localTime <= new Date()) {
-    localTime.setDate(localTime.getDate() + 1);
-  }
-
   await Notifications.scheduleNotificationAsync({
     content: {
       title: "Word of the Day 📖",
@@ -42,9 +34,9 @@ export async function scheduleDailyNotification() {
       sound: true,
     },
     trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
       hour: 9,
       minute: 0,
-      repeats: true, // Repeat daily at 9 AM
     },
   });
 }
