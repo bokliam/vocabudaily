@@ -23,7 +23,6 @@ export default {
       },
       ios: {
         bundleIdentifier: "com.liam.vocabudaily",
-        buildNumber: "2",
         supportsTablet: true,
         config: {
           usesNonExemptEncryption: false
