@@ -41,3 +41,10 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
+
+# generated seed artifacts (re-export from Supabase if needed)
+scripts/seed/words.txt
+scripts/seed/data/
+scripts/seed/.cache/
+scripts/seed/batch-state.json
+scripts/seed/failures.json
