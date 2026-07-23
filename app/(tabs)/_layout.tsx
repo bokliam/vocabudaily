@@ -8,17 +8,9 @@ export default function Layout() {
         name="index"
         options={{
           title: "Word of the Day",
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="book-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="licenses"
-        options={{
-          title: "Licenses & Attributions",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="document-text-outline" size={size} color={color} />
           ),
         }}
       />

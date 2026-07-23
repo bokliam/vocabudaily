@@ -1,14 +1,26 @@
 import React, { useRef, useState, useEffect } from "react";
-import { View, Text, StyleSheet, Linking, ActivityIndicator, ScrollView, useColorScheme, Animated, TouchableOpacity, Share, FlatList, Dimensions } from "react-native";
-import Constants from "expo-constants";
+import { View, Text, StyleSheet, ActivityIndicator, ScrollView, useColorScheme, Animated, TouchableOpacity, Share, FlatList, Dimensions, AppState } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import * as Notifications from "expo-notifications";
-import { requestNotificationPermissions, scheduleDailyNotification } from "../../notifications";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { requestNotificationPermissions, rescheduleUpcomingNotifications } from "../../notifications";
+import { getDailyWord } from "../../services/wordService";
 import {} from "react-native";
 import { createContext, useContext } from "react";
 
+const LAST_OPENED_KEY = "@vocabudaily/lastOpenedDate";
 
-const WORDNIK_API_KEY = Constants.expoConfig.extra.WORDNIK_API_KEY;
-const WORDNIK_BASE_URL = "https://api.wordnik.com/v4/words.json/wordOfTheDay";
+async function maybeRescheduleNotifications() {
+  const today = new Date().toDateString();
+  const lastOpened = await AsyncStorage.getItem(LAST_OPENED_KEY);
+  if (lastOpened === today) return;
+
+  await requestNotificationPermissions();
+  await rescheduleUpcomingNotifications();
+  await AsyncStorage.setItem(LAST_OPENED_KEY, today);
+}
+
+
 const APP_DOWNLOAD_LINK = "https://apps.apple.com/app/id6758642231";
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const CARD_WIDTH = SCREEN_WIDTH * 0.90; // 85% of screen width
@@ -18,15 +30,16 @@ export const WordProvider = ({ children }) => {
   const [wordData, setWordData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const lastFetchDate = useRef<string | null>(null);
+  const appState = useRef(AppState.currentState);
 
   const fetchWord = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${WORDNIK_BASE_URL}?api_key=${WORDNIK_API_KEY}`);
-      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-      const data = await response.json();
+      const data = await getDailyWord();
       setWordData(data);
+      lastFetchDate.current = new Date().toDateString();
     } catch (error) {
       console.error("Error fetching word:", error);
       setError(error.message);
@@ -36,9 +49,25 @@ export const WordProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    if (!wordData) {
+    const today = new Date().toDateString();
+    if (!wordData || lastFetchDate.current !== today) {
       fetchWord();
     }
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      const wasBackground = appState.current.match(/inactive|background/);
+      if (wasBackground && nextAppState === "active") {
+        const today = new Date().toDateString();
+        if (lastFetchDate.current !== today) {
+          fetchWord();
+        }
+        maybeRescheduleNotifications();
+      }
+      appState.current = nextAppState;
+    });
+    return () => subscription.remove();
   }, []);
 
   return (
@@ -62,13 +91,9 @@ const HomeScreen = () => {
 
     fetchWord();
 
-    // Schedule Daily Notification at 9 AM
-    (async () => {
-      await requestNotificationPermissions();
-      await scheduleDailyNotification();
-    })(); 
+    maybeRescheduleNotifications();
 
-    return () => controller.abort(); 
+    return () => controller.abort();
   }, []);
 
   const shareWord = async () => {
@@ -85,20 +110,30 @@ const HomeScreen = () => {
     }
   }; 
 
-  if (loading) return <ActivityIndicator size="large" color={isDarkMode ? "#fff" : "#000"} />;
+  if (loading) return (
+    <SafeAreaView edges={["top"]} style={[styles.safeArea, isDarkMode && styles.darkContainer]}>
+      <View style={[styles.container, isDarkMode && styles.darkContainer]}>
+        <ActivityIndicator size="large" color={isDarkMode ? "#fff" : "#000"} />
+      </View>
+    </SafeAreaView>
+  );
   if (error) return (
-    <View style={[styles.container, isDarkMode && styles.darkContainer]}>
-      <Text style={[styles.error, isDarkMode && styles.darkText]}>
-        Error: {error}
-      </Text>
-      <TouchableOpacity style={styles.retryButton} onPress={fetchWord}>
-        <Text style={styles.retryButtonText}>Retry</Text>
-      </TouchableOpacity>
-    </View>
+    <SafeAreaView edges={["top"]} style={[styles.safeArea, isDarkMode && styles.darkContainer]}>
+      <View style={[styles.container, isDarkMode && styles.darkContainer]}>
+        <Text style={[styles.error, isDarkMode && styles.darkText]}>
+          Error: {error}
+        </Text>
+        <TouchableOpacity style={styles.retryButton} onPress={fetchWord}>
+          <Text style={styles.retryButtonText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
   );
 
   return (
-    <ScrollView contentContainerStyle={[styles.container, isDarkMode && styles.darkContainer]}>
+    <SafeAreaView edges={["top"]} style={[styles.safeArea, isDarkMode && styles.darkContainer]}>
+      <Text style={[styles.screenTitle, isDarkMode && styles.darkText, isDarkMode && styles.darkScreenTitle]}>Word of the Day</Text>
+      <ScrollView contentContainerStyle={[styles.container, isDarkMode && styles.darkContainer]}>
       {wordData ? (
         <>
           {/* Display Word */}
@@ -106,54 +141,36 @@ const HomeScreen = () => {
             <Text style={[styles.word, isDarkMode && styles.darkText]}>{wordData.word || "No word available"}</Text>
           </View>
 
-          {/* Display First Definition + Required Source Attribution */}
-          <Text style={[styles.definition, isDarkMode && styles.darkText]}>
-          <Text style={[styles.definitionTitle, isDarkMode && styles.darkText]}>Definition: </Text>
-            {wordData.definitions?.[0]?.text || "Definition not available."}
-          </Text>
-          {wordData.definitions?.[0]?.source && (
-            <Text style={[styles.sourceAttribution, isDarkMode && styles.darkText]}>
-              Source: {wordData.definitions[0].source}
+          {/* Display Pronunciation (if available) */}
+          {wordData.phonetic && (
+            <Text style={[styles.pronunciation, isDarkMode && styles.darkSecondaryText]}>
+              [{wordData.phonetic}]
             </Text>
           )}
 
-          {/* Display Word Origin (if available) */}
-          {wordData.note && <Text style={[styles.note, isDarkMode && styles.darkText]}>Origin: {wordData.note}</Text>}
+          {/* Display Part of Speech (if available) */}
+          {wordData.part_of_speech && (
+            <Text style={[styles.partOfSpeech, isDarkMode && styles.darkSecondaryText]}>
+              {wordData.part_of_speech}
+            </Text>
+          )}
 
-          {/* Display an Example Sentence + Metadata */}
+          {/* Display Definition */}
+          <Text style={[styles.definition, isDarkMode && styles.darkText]}>
+          <Text style={[styles.definitionTitle, isDarkMode && styles.darkText]}>Definition: </Text>
+            {wordData.definition || "Definition not available."}
+          </Text>
+
+          {/* Display Word Origin */}
+          {wordData.origin && <Text style={[styles.note, isDarkMode && styles.darkText]}>Origin: {wordData.origin}</Text>}
+
+          {/* Display an Example Sentence */}
           {wordData.examples?.length > 0 && (
             <View style={[styles.exampleContainer, isDarkMode && styles.darkExampleContainer]}>
               <Text style={[styles.exampleTitle, isDarkMode && styles.darkText]}>Example:</Text>
-              <Text style={[styles.exampleText, isDarkMode && styles.darkText]}>{wordData.examples[0].text}</Text>
-
-              {/* Display Source Title */}
-              {wordData.examples[0].title && (
-                <Text style={[styles.exampleSource, isDarkMode && styles.darkText]}>
-                  Source: {wordData.examples[0].title}
-                </Text>
-              )}
-
-              {/* Display Clickable Source URL */}
-              {wordData.examples[0].url && (
-                <Text
-                  style={[styles.exampleLink, isDarkMode && styles.darkLink]}
-                  onPress={() => Linking.openURL(wordData.examples[0].url)}
-                >
-                  Read More
-                </Text>
-              )}
+              <Text style={[styles.exampleText, isDarkMode && styles.darkText]}>{wordData.examples[0]}</Text>
             </View>
           )}
-
-
-
-          {/* Required Wordnik Attribution - Direct Link */}
-          <Text
-            style={[styles.link, isDarkMode && styles.darkLink]}
-            onPress={() => Linking.openURL(`https://www.wordnik.com/words/${wordData.word}`)}
-          >
-            See more on Wordnik
-          </Text>
 
           <View style={styles.shareContainer}>
             <Text
@@ -167,11 +184,27 @@ const HomeScreen = () => {
       ) : (
         <Text style={[styles.error, isDarkMode && styles.darkText]}>No word data available.</Text>
       )}
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#ffffff",
+  },
+  screenTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    textAlign: "center",
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#ccc",
+  },
+  darkScreenTitle: {
+    borderBottomColor: "#333",
+  },
   container: {
     flexGrow: 1,
     justifyContent: "center",
@@ -192,6 +225,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
+  },
+  pronunciation: {
+    fontSize: 18,
+    color: "#666",
+    marginBottom: 4,
+    textAlign: "center",
+  },
+  partOfSpeech: {
+    fontSize: 16,
+    fontStyle: "italic",
+    color: "#666",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  darkSecondaryText: {
+    color: "#bbbbbb",
   },
   shareContainer: {
     marginTop: 20,
@@ -223,13 +272,8 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
     color: "#555", // Softer color for readability
   },
-  sourceAttribution: {
-    fontSize: 14,
-    fontStyle: "italic",
-    marginBottom: 10,
-    color: "#888",
-  },
   note: {
+    marginTop: 14,
     fontSize: 16,
     fontStyle: "italic",
     marginBottom: 10,
@@ -260,27 +304,6 @@ const styles = StyleSheet.create({
   exampleText: {
     fontSize: 16,
     textAlign: "center",
-  },
-  exampleSource: {
-    fontSize: 12,
-    fontStyle: "italic",
-    marginTop: 5,
-    color: "#555",
-  },
-  exampleLink: {
-    color: "#1E90FF",
-    fontSize: 14,
-    marginTop: 5,
-    textDecorationLine: "underline",
-  },
-  darkLink: {
-    color: "#80bfff", // Lighter blue for dark mode
-  },
-  link: {
-    color: "#1E90FF",
-    fontSize: 16,
-    marginTop: 10,
-    textDecorationLine: "underline",
   },
   error: {
     fontSize: 16,

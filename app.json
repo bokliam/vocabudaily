@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "4"
+      "buildNumber": "7"
     },
     "android": {
       "adaptiveIcon": {
@@ -38,7 +38,8 @@
       "typedRoutes": true
     },
     "extra": {
-      "WORDNIK_API_KEY": "@env.WORDNIK_API_KEY"
+      "SUPABASE_URL": "@env.SUPABASE_URL",
+      "SUPABASE_ANON_KEY": "@env.SUPABASE_ANON_KEY"
     }
   }
 }
