@@ -1,4 +1,4 @@
-# Vocabudaily
+# VocabuDaily
 
 This is a word of the day project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
